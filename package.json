@@ -6,7 +6,7 @@
   "description": "Bot de verificação Discord via OAuth intra.42.fr para a comunidade 42 Rio Naufragos",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/db && cp src/db/schema.sql dist/db/schema.sql",
     "start": "node dist/index.js",
     "register-commands": "tsx src/discord/deployCommands.ts",
     "test": "node --import tsx --test tests/**/*.test.ts"
