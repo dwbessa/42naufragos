@@ -3,12 +3,17 @@ import { client, startDiscordClient } from "./discord/client.js";
 import { handleInteraction } from "./discord/interactionHandler.js";
 import { createServer } from "./web/server.js";
 import { pollUpcomingEvaluations } from "./services/evaluationMuralService.js";
+import { ensureVerifyWelcomeMessage } from "./services/verifyWelcomeService.js";
 import "./db/database.js";
 
 let muralInterval: NodeJS.Timeout | undefined;
 
 client.once("ready", () => {
   console.log(`Bot online como ${client.user?.tag}`);
+
+  void ensureVerifyWelcomeMessage().catch((error) =>
+    console.error("Erro ao postar mensagem de verificação:", error)
+  );
 
   if (config.DISCORD_MURAL_CHANNEL_ID) {
     void pollUpcomingEvaluations().catch((error) => console.error("Erro no polling do mural:", error));
