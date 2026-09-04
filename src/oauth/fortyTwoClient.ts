@@ -44,6 +44,7 @@ export interface FortyTwoMe {
   id: number;
   login: string;
   "alumni?": boolean;
+  "staff?": boolean;
   campus: Array<{ id: number; name: string }>;
   cursus_users: Array<{
     grade: string | null;
@@ -65,6 +66,10 @@ export async function fetchMe(accessToken: string): Promise<FortyTwoMe> {
 
 export function belongsToConfiguredCampus(me: FortyTwoMe): boolean {
   return me.campus.some((c) => c.id === config.FT_CAMPUS_ID);
+}
+
+export function isStaff(me: FortyTwoMe): boolean {
+  return me["staff?"] === true;
 }
 
 /** "Transcendeu": grade "Transcender" no cursus principal (slug 42cursus / common core). */

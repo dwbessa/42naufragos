@@ -6,6 +6,7 @@ import {
   fetchMe,
   FortyTwoApiError,
   hasCompletedCommonCore,
+  isStaff,
 } from "../oauth/fortyTwoClient.js";
 import { consumeState } from "../oauth/stateStore.js";
 import { getVerificationByIntraId, upsertVerification } from "../db/database.js";
@@ -30,6 +31,10 @@ export async function completeVerification(code: string, state: string): Promise
 
   if (!belongsToConfiguredCampus(me)) {
     throw new VerificationError("Sua conta da intra não pertence ao campus 42 Rio.");
+  }
+
+  if (isStaff(me)) {
+    throw new VerificationError("Contas de staff da 42 não podem se verificar neste servidor.");
   }
 
   const conflicting = getVerificationByIntraId(me.id);
