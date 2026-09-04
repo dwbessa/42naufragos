@@ -1,0 +1,26 @@
+{
+  "name": "discord-42-naufragos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot de verificação Discord via OAuth intra.42.fr para a comunidade 42 Rio Naufragos",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "register-commands": "tsx src/discord/deployCommands.ts",
+    "test": "node --import tsx --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
