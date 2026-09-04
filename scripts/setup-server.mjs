@@ -11,7 +11,14 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 function overwritesFor(
   guild,
-  { staffOnly = false, publicRead = false, botOnlyWrite = false, restrictedRoleId = null, restrictedUserId = null } = {}
+  {
+    staffOnly = false,
+    publicRead = false,
+    botOnlyWrite = false,
+    restrictedRoleId = null,
+    restrictedUserId = null,
+    denyRoleIds = [],
+  } = {}
 ) {
   const everyone = guild.roles.everyone.id;
   const byId = new Map();
@@ -46,6 +53,11 @@ function overwritesFor(
     merge(ALUNO_ROLE_ID, { deny: [PermissionFlagsBits.SendMessages] });
   }
 
+  // Deny explícito de role vence o allow de @everyone/publicRead (ordem de resolução do Discord).
+  for (const roleId of denyRoleIds) {
+    merge(roleId, { deny: [PermissionFlagsBits.ViewChannel] });
+  }
+
   // Sempre garante que o bot enxerga e gerencia o canal, mesmo quando @everyone é negado.
   // ManageRoles não pode ser delegado via overwrite de canal (Discord rejeita a criação).
   merge(BOT_ROLE_ID, {
@@ -67,11 +79,16 @@ function overwritesFor(
 const structure = [
   {
     name: "INÍCIO",
-    voiceLabel: "Início",
+    noVoice: true,
     channels: [
       { name: "regras", publicRead: true, botOnlyWrite: true },
       { name: "anúncios", botOnlyWrite: true },
-      { name: "verificação", publicRead: true, botOnlyWrite: true },
+      {
+        name: "verificação",
+        publicRead: true,
+        botOnlyWrite: true,
+        denyRoleIds: [ALUNO_ROLE_ID],
+      },
     ],
   },
   {
@@ -110,6 +127,7 @@ const structure = [
 const VOICE_CHANNELS_PER_CATEGORY = 3;
 
 for (const cat of structure) {
+  if (cat.noVoice) continue;
   for (let i = 1; i <= VOICE_CHANNELS_PER_CATEGORY; i++) {
     cat.channels.push({
       name: `${cat.voiceLabel} ${String(i).padStart(2, "0")}`,
@@ -155,6 +173,7 @@ client.once("ready", async () => {
         botOnlyWrite: ch.voice ? false : ch.botOnlyWrite,
         restrictedRoleId: ch.restrictedRoleId,
         restrictedUserId: ch.restrictedUserId,
+        denyRoleIds: ch.denyRoleIds,
       });
 
       const already = existingChannels.find(
