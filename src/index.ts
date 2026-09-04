@@ -39,4 +39,15 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+// Loga em vez de deixar o processo morrer em silêncio por uma promise rejeitada solta
+// (ex: falha de rede pontual na API da 42 dentro do polling do mural).
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception, encerrando pra o Railway reiniciar:", error);
+  process.exit(1);
+});
+
 await startDiscordClient();
