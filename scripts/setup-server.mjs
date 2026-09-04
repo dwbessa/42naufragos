@@ -8,7 +8,7 @@ const BOT_ROLE_ID = "1545495131975720964"; // 42naufragos (managed role do bot)
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWrite = false } = {}) {
+function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWrite = false, restrictedRoleId = null } = {}) {
   const everyone = guild.roles.everyone.id;
   const byId = new Map();
 
@@ -23,6 +23,9 @@ function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWr
     merge(everyone, { deny: [PermissionFlagsBits.ViewChannel] });
     merge(ALUNO_ROLE_ID, { deny: [PermissionFlagsBits.ViewChannel] });
     merge(STAFF_ROLE_ID, { allow: [PermissionFlagsBits.ViewChannel] });
+  } else if (restrictedRoleId) {
+    merge(everyone, { deny: [PermissionFlagsBits.ViewChannel] });
+    merge(restrictedRoleId, { allow: [PermissionFlagsBits.ViewChannel] });
   } else if (publicRead) {
     merge(everyone, { allow: [PermissionFlagsBits.ViewChannel] });
   } else {
@@ -66,8 +69,9 @@ const structure = [
     channels: [{ name: "geral" }, { name: "off-topic" }, { name: "memes" }],
   },
   {
-    name: "PISCINE",
-    channels: [{ name: "piscine-geral" }, { name: "piscine-ajuda" }],
+    name: "TRANSCENDERS",
+    restrictedRoleId: TRANSCENDER_ROLE_ID,
+    channels: [{ name: "geral-transcenders", restrictedRoleId: TRANSCENDER_ROLE_ID }],
   },
   {
     name: "CURSUS",
@@ -84,6 +88,16 @@ const structure = [
   },
 ];
 
+for (const cat of structure) {
+  cat.channels.push({
+    name: `Voz - ${cat.name}`,
+    voice: true,
+    staffOnly: cat.staffOnly,
+    publicRead: cat.channels.some((c) => c.publicRead),
+    restrictedRoleId: cat.restrictedRoleId ?? null,
+  });
+}
+
 client.once("ready", async () => {
   const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID);
   const existingChannels = await guild.channels.fetch();
@@ -93,7 +107,10 @@ client.once("ready", async () => {
       (c) => c.type === ChannelType.GuildCategory && c.name === cat.name
     );
 
-    const categoryOverwrites = overwritesFor(guild, { staffOnly: cat.staffOnly });
+    const categoryOverwrites = overwritesFor(guild, {
+      staffOnly: cat.staffOnly,
+      restrictedRoleId: cat.restrictedRoleId,
+    });
 
     if (!category) {
       category = await guild.channels.create({
@@ -108,27 +125,29 @@ client.once("ready", async () => {
     }
 
     for (const ch of cat.channels) {
+      const channelType = ch.voice ? ChannelType.GuildVoice : ChannelType.GuildText;
+      const overwrites = overwritesFor(guild, {
+        staffOnly: ch.staffOnly,
+        publicRead: ch.publicRead,
+        botOnlyWrite: ch.voice ? false : ch.botOnlyWrite,
+        restrictedRoleId: ch.restrictedRoleId,
+      });
+
       const already = existingChannels.find(
-        (c) => c.type === ChannelType.GuildText && c.name === ch.name && c.parentId === category.id
+        (c) => c.type === channelType && c.name === ch.name && c.parentId === category.id
       );
       if (already) {
-        await already.permissionOverwrites.set(
-          overwritesFor(guild, { staffOnly: ch.staffOnly, publicRead: ch.publicRead, botOnlyWrite: ch.botOnlyWrite })
-        );
-        console.log(`  Canal já existe, overwrites atualizados: #${ch.name}`);
+        await already.permissionOverwrites.set(overwrites);
+        console.log(`  Canal já existe, overwrites atualizados: ${ch.voice ? "🔊" : "#"}${ch.name}`);
         continue;
       }
       await guild.channels.create({
         name: ch.name,
-        type: ChannelType.GuildText,
+        type: channelType,
         parent: category.id,
-        permissionOverwrites: overwritesFor(guild, {
-          staffOnly: ch.staffOnly,
-          publicRead: ch.publicRead,
-          botOnlyWrite: ch.botOnlyWrite,
-        }),
+        permissionOverwrites: overwrites,
       });
-      console.log(`  Canal criado: #${ch.name}`);
+      console.log(`  Canal criado: ${ch.voice ? "🔊" : "#"}${ch.name}`);
     }
   }
 
