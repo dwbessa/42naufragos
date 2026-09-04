@@ -1,25 +1,33 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits, ChannelType, PermissionFlagsBits } from "discord.js";
+import { Client, GatewayIntentBits, ChannelType, PermissionFlagsBits, OverwriteType } from "discord.js";
 
 const ALUNO_ROLE_ID = process.env.DISCORD_VERIFIED_ROLE_ID;
 const TRANSCENDER_ROLE_ID = process.env.DISCORD_TRANSCENDER_ROLE_ID;
 const STAFF_ROLE_ID = "1545496217360928869"; // multiplicador
 const BOT_ROLE_ID = "1545495131975720964"; // 42naufragos (managed role do bot)
+const OWNER_USER_ID = "501196386226667531"; // dbessa
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWrite = false, restrictedRoleId = null } = {}) {
+function overwritesFor(
+  guild,
+  { staffOnly = false, publicRead = false, botOnlyWrite = false, restrictedRoleId = null, restrictedUserId = null } = {}
+) {
   const everyone = guild.roles.everyone.id;
   const byId = new Map();
 
-  function merge(id, { allow = [], deny = [] }) {
-    const entry = byId.get(id) ?? { id, allow: new Set(), deny: new Set() };
+  function merge(id, { allow = [], deny = [], type = OverwriteType.Role }) {
+    const entry = byId.get(id) ?? { id, type, allow: new Set(), deny: new Set() };
     allow.forEach((bit) => entry.allow.add(bit));
     deny.forEach((bit) => entry.deny.add(bit));
     byId.set(id, entry);
   }
 
-  if (staffOnly) {
+  if (restrictedUserId) {
+    merge(everyone, { deny: [PermissionFlagsBits.ViewChannel] });
+    merge(ALUNO_ROLE_ID, { deny: [PermissionFlagsBits.ViewChannel] });
+    merge(restrictedUserId, { allow: [PermissionFlagsBits.ViewChannel], type: OverwriteType.Member });
+  } else if (staffOnly) {
     merge(everyone, { deny: [PermissionFlagsBits.ViewChannel] });
     merge(ALUNO_ROLE_ID, { deny: [PermissionFlagsBits.ViewChannel] });
     merge(STAFF_ROLE_ID, { allow: [PermissionFlagsBits.ViewChannel] });
@@ -50,6 +58,7 @@ function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWr
 
   return [...byId.values()].map((e) => ({
     id: e.id,
+    type: e.type,
     allow: [...e.allow],
     deny: [...e.deny],
   }));
@@ -87,7 +96,7 @@ const structure = [
     channels: [
       { name: "buscando-dupla" },
       { name: "showcase" },
-      { name: "mural-avaliacoes", botOnlyWrite: true },
+      { name: "mural-avaliacoes", botOnlyWrite: true, restrictedUserId: OWNER_USER_ID },
     ],
   },
   {
@@ -145,6 +154,7 @@ client.once("ready", async () => {
         publicRead: ch.publicRead,
         botOnlyWrite: ch.voice ? false : ch.botOnlyWrite,
         restrictedRoleId: ch.restrictedRoleId,
+        restrictedUserId: ch.restrictedUserId,
       });
 
       const already = existingChannels.find(
