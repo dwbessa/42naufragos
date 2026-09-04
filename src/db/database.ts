@@ -62,3 +62,22 @@ export function getVerificationByDiscordId(discordId: string): VerificationRecor
 export function getVerificationByIntraId(intraId: number): VerificationRecord | undefined {
   return toRecord(getByIntraIdStmt.get(intraId));
 }
+
+const getAllLoginsStmt = db.prepare("SELECT intra_login FROM verifications");
+
+export function getAllVerifiedLogins(): string[] {
+  return (getAllLoginsStmt.all() as { intra_login: string }[]).map((r) => r.intra_login);
+}
+
+const isPostedStmt = db.prepare("SELECT 1 FROM posted_evaluations WHERE scale_team_id = ?");
+const markPostedStmt = db.prepare(
+  "INSERT OR IGNORE INTO posted_evaluations (scale_team_id, posted_at) VALUES (?, ?)"
+);
+
+export function isEvaluationPosted(scaleTeamId: number): boolean {
+  return isPostedStmt.get(scaleTeamId) !== undefined;
+}
+
+export function markEvaluationPosted(scaleTeamId: number): void {
+  markPostedStmt.run(scaleTeamId, new Date().toISOString());
+}

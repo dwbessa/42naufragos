@@ -5,3 +5,8 @@ CREATE TABLE IF NOT EXISTS verifications (
   is_transcender INTEGER NOT NULL DEFAULT 0,
   verified_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS posted_evaluations (
+  scale_team_id INTEGER PRIMARY KEY,
+  posted_at TEXT NOT NULL
+);

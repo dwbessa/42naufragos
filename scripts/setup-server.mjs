@@ -84,7 +84,11 @@ const structure = [
   {
     name: "PROJETOS",
     voiceLabel: "Projetos",
-    channels: [{ name: "buscando-dupla" }, { name: "showcase" }],
+    channels: [
+      { name: "buscando-dupla" },
+      { name: "showcase" },
+      { name: "mural-avaliacoes", botOnlyWrite: true },
+    ],
   },
   {
     name: "STAFF",
