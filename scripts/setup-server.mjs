@@ -58,6 +58,7 @@ function overwritesFor(guild, { staffOnly = false, publicRead = false, botOnlyWr
 const structure = [
   {
     name: "INÍCIO",
+    voiceLabel: "Início",
     channels: [
       { name: "regras", publicRead: true, botOnlyWrite: true },
       { name: "anúncios", botOnlyWrite: true },
@@ -66,36 +67,45 @@ const structure = [
   },
   {
     name: "GERAL",
+    voiceLabel: "Geral",
     channels: [{ name: "geral" }, { name: "off-topic" }, { name: "memes" }],
   },
   {
     name: "TRANSCENDERS",
+    voiceLabel: "Transcenders",
     restrictedRoleId: TRANSCENDER_ROLE_ID,
     channels: [{ name: "geral-transcenders", restrictedRoleId: TRANSCENDER_ROLE_ID }],
   },
   {
     name: "CURSUS",
+    voiceLabel: "Cursus",
     channels: [{ name: "geral-cursus" }],
   },
   {
     name: "PROJETOS",
+    voiceLabel: "Projetos",
     channels: [{ name: "buscando-dupla" }, { name: "showcase" }],
   },
   {
     name: "STAFF",
+    voiceLabel: "Staff",
     staffOnly: true,
     channels: [{ name: "staff-geral", staffOnly: true }, { name: "logs", staffOnly: true }],
   },
 ];
 
+const VOICE_CHANNELS_PER_CATEGORY = 3;
+
 for (const cat of structure) {
-  cat.channels.push({
-    name: `Voz - ${cat.name}`,
-    voice: true,
-    staffOnly: cat.staffOnly,
-    publicRead: cat.channels.some((c) => c.publicRead),
-    restrictedRoleId: cat.restrictedRoleId ?? null,
-  });
+  for (let i = 1; i <= VOICE_CHANNELS_PER_CATEGORY; i++) {
+    cat.channels.push({
+      name: `${cat.voiceLabel} ${String(i).padStart(2, "0")}`,
+      voice: true,
+      staffOnly: cat.staffOnly,
+      publicRead: cat.channels.some((c) => c.publicRead),
+      restrictedRoleId: cat.restrictedRoleId ?? null,
+    });
+  }
 }
 
 client.once("ready", async () => {
