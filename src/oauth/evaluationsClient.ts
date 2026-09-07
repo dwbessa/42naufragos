@@ -38,29 +38,43 @@ export interface CampusWaitingEntry {
 
 interface CampusProjectUser {
   current_team_id: number | null;
+  marked_at: string | null;
   project: { id: number; name: string };
   user?: { login: string } | null;
   login?: string;
 }
 
 /**
- * Todos os projetos do campus em waiting_for_correction (alguém fechou, dá pra
- * marcar correção). Uma consulta paginada em vez de varrer usuário por usuário.
+ * Projetos do campus que entraram em waiting_for_correction recentemente
+ * (alguém fechou, dá pra marcar correção). Uma consulta paginada em vez de
+ * varrer usuário por usuário.
+ *
+ * `sinceDays` corta os zumbis: a lista bruta de waiting_for_correction tem
+ * registros de anos atrás e placeholders de avaliação de estágio (marked_at
+ * null). Filtramos por range[marked_at] no servidor + checagem no cliente.
  */
-export async function getCampusWaitingForCorrection(campusId: number): Promise<CampusWaitingEntry[]> {
+export async function getCampusWaitingForCorrection(
+  campusId: number,
+  sinceDays: number
+): Promise<CampusWaitingEntry[]> {
   const out: CampusWaitingEntry[] = [];
   const pageSize = 100;
-  const maxPages = 50; // guarda contra loop infinito (~5000 projetos)
+  const maxPages = 20;
+  const cutoffMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
+  const since = new Date(cutoffMs).toISOString();
+  const until = new Date().toISOString();
 
   for (let page = 1; page <= maxPages; page++) {
     const batch = await fetchJson<CampusProjectUser[]>(
-      `/campus/${campusId}/projects_users?filter[status]=waiting_for_correction` +
+      `/projects_users?filter[status]=waiting_for_correction&filter[campus]=${campusId}` +
+        `&range[marked_at]=${encodeURIComponent(`${since},${until}`)}` +
         `&page[size]=${pageSize}&page[number]=${page}`
     );
 
     for (const pu of batch) {
       const login = pu.user?.login ?? pu.login;
-      if (!login || !pu.current_team_id) continue;
+      if (!login || !pu.current_team_id || !pu.marked_at) continue;
+      if (Date.parse(pu.marked_at) < cutoffMs) continue;
       out.push({
         teamId: pu.current_team_id,
         login,
@@ -100,40 +114,16 @@ export async function getTeamScaleTeams(teamId: number): Promise<ScaleTeamSlot[]
   return team.scale_teams;
 }
 
-interface Scale {
-  id: number;
-  correction_number: number;
-}
-
-const correctionNumberCache = new Map<number, number>();
-
 /**
- * Quantas avaliações o projeto exige (o "N" de "X/N"). Tenta primeiro pelo
- * scale aninhado nas escalas do time (sem custo extra); se não vier, busca
- * /projects/:id/scales e cacheia. Retorna null quando não dá pra determinar.
+ * Quantas avaliações o projeto exige (o "N" de "X/N"), lido do scale aninhado
+ * nas escalas do time quando a API manda. Não dá pra buscar em /projects/:id/scales
+ * — 403 com o token de aplicação. Retorna null quando não vem aninhado.
  */
-export async function getProjectCorrectionNumber(
-  projectId: number,
-  scaleTeams: ScaleTeamSlot[]
-): Promise<number | null> {
+export function getProjectCorrectionNumber(scaleTeams: ScaleTeamSlot[]): number | null {
   const fromNested = scaleTeams
     .map((st) => st.scale?.correction_number)
     .find((n): n is number => typeof n === "number" && n > 0);
-  if (fromNested) return fromNested;
-
-  const cached = correctionNumberCache.get(projectId);
-  if (cached) return cached;
-
-  try {
-    const scales = await fetchJson<Scale[]>(`/projects/${projectId}/scales`);
-    const numbers = scales.map((s) => s.correction_number).filter((n) => typeof n === "number" && n > 0);
-    if (numbers.length === 0) return null;
-    const n = Math.max(...numbers);
-    correctionNumberCache.set(projectId, n);
-    return n;
-  } catch {
-    return null;
-  }
+  return fromNested ?? null;
 }
 
 export function sleep(ms: number): Promise<void> {

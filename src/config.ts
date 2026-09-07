@@ -18,6 +18,7 @@ const envSchema = z.object({
   DISCORD_MURAL_CHANNEL_ID: z.string().min(1).optional(),
   MURAL_WINDOW_HOURS: z.coerce.number().positive().default(6),
   MURAL_POLL_MINUTES: z.coerce.number().positive().default(30),
+  MURAL_CLOSED_MAX_AGE_DAYS: z.coerce.number().positive().default(7),
 });
 
 const parsed = envSchema.safeParse(process.env);
