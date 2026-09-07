@@ -29,6 +29,53 @@ export async function getWaitingForCorrection(login: string): Promise<ProjectUse
   );
 }
 
+export interface CampusWaitingEntry {
+  teamId: number;
+  login: string;
+  projectId: number;
+  projectName: string;
+}
+
+interface CampusProjectUser {
+  current_team_id: number | null;
+  project: { id: number; name: string };
+  user?: { login: string } | null;
+  login?: string;
+}
+
+/**
+ * Todos os projetos do campus em waiting_for_correction (alguém fechou, dá pra
+ * marcar correção). Uma consulta paginada em vez de varrer usuário por usuário.
+ */
+export async function getCampusWaitingForCorrection(campusId: number): Promise<CampusWaitingEntry[]> {
+  const out: CampusWaitingEntry[] = [];
+  const pageSize = 100;
+  const maxPages = 50; // guarda contra loop infinito (~5000 projetos)
+
+  for (let page = 1; page <= maxPages; page++) {
+    const batch = await fetchJson<CampusProjectUser[]>(
+      `/campus/${campusId}/projects_users?filter[status]=waiting_for_correction` +
+        `&page[size]=${pageSize}&page[number]=${page}`
+    );
+
+    for (const pu of batch) {
+      const login = pu.user?.login ?? pu.login;
+      if (!login || !pu.current_team_id) continue;
+      out.push({
+        teamId: pu.current_team_id,
+        login,
+        projectId: pu.project.id,
+        projectName: pu.project.name,
+      });
+    }
+
+    if (batch.length < pageSize) break;
+    await sleep(600);
+  }
+
+  return out;
+}
+
 export interface ScaleTeamSlot {
   id: number;
   begin_at: string;
