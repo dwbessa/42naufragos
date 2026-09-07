@@ -4,6 +4,7 @@ import { handleInteraction } from "./discord/interactionHandler.js";
 import { createServer } from "./web/server.js";
 import { pollUpcomingEvaluations } from "./services/evaluationMuralService.js";
 import { ensureVerifyWelcomeMessage } from "./services/verifyWelcomeService.js";
+import { isTransientError } from "./lib/transientError.js";
 import "./db/database.js";
 
 let muralInterval: NodeJS.Timeout | undefined;
@@ -47,10 +48,18 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 // Loga em vez de deixar o processo morrer em silêncio por uma promise rejeitada solta
 // (ex: falha de rede pontual na API da 42 dentro do polling do mural).
 process.on("unhandledRejection", (reason) => {
+  if (isTransientError(reason)) {
+    console.warn("Unhandled rejection transitória (ignorada):", reason);
+    return;
+  }
   console.error("Unhandled rejection:", reason);
 });
 
 process.on("uncaughtException", (error) => {
+  if (isTransientError(error)) {
+    console.warn("Exceção de rede transitória, mantendo o processo vivo:", error);
+    return;
+  }
   console.error("Uncaught exception, encerrando pra o Railway reiniciar:", error);
   process.exit(1);
 });
