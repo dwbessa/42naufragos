@@ -82,25 +82,12 @@ export function markEvaluationPosted(scaleTeamId: number): void {
   markPostedStmt.run(scaleTeamId, new Date().toISOString());
 }
 
-const hasSeenLoginStmt = db.prepare("SELECT 1 FROM mural_seen_logins WHERE login = ?");
-const markLoginSeenStmt = db.prepare(
-  "INSERT OR IGNORE INTO mural_seen_logins (login, seen_at) VALUES (?, ?)"
-);
-
-export function hasSeenMuralLogin(login: string): boolean {
-  return hasSeenLoginStmt.get(login) !== undefined;
-}
-
-export function markMuralLoginSeen(login: string): void {
-  markLoginSeenStmt.run(login, new Date().toISOString());
-}
-
 const isClosedNotifiedStmt = db.prepare("SELECT 1 FROM mural_closed_projects WHERE team_id = ?");
 const markClosedNotifiedStmt = db.prepare(
   "INSERT OR IGNORE INTO mural_closed_projects (team_id, login, project, notified_at) VALUES (?, ?, ?, ?)"
 );
 const deleteStaleClosedStmt = db.prepare(
-  "DELETE FROM mural_closed_projects WHERE login = ? AND team_id NOT IN (SELECT value FROM json_each(?))"
+  "DELETE FROM mural_closed_projects WHERE team_id NOT IN (SELECT value FROM json_each(?))"
 );
 
 export function isClosedProjectNotified(teamId: number): boolean {
@@ -111,22 +98,22 @@ export function markClosedProjectNotified(teamId: number, login: string, project
   markClosedNotifiedStmt.run(teamId, login, project, new Date().toISOString());
 }
 
-/** Remove os times anunciados desse login que não estão mais aguardando correção. */
-export function pruneClosedProjects(login: string, activeTeamIds: number[]): void {
-  deleteStaleClosedStmt.run(login, JSON.stringify(activeTeamIds));
+/** Remove os times anunciados que não estão mais aguardando correção no campus. */
+export function pruneClosedProjects(activeTeamIds: number[]): void {
+  deleteStaleClosedStmt.run(JSON.stringify(activeTeamIds));
 }
 
-const BOOTSTRAP_KEY = "closed_projects_bootstrapped";
+const CAMPUS_BACKLOG_KEY = "campus_closed_projects_bootstrapped";
 const getMetaStmt = db.prepare("SELECT value FROM mural_meta WHERE key = ?");
 const setMetaStmt = db.prepare(
   "INSERT INTO mural_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
 );
 
-/** true depois que a primeira varredura completa já rodou (backlog inicial já anunciado). */
-export function isMuralBootstrapped(): boolean {
-  return getMetaStmt.get(BOOTSTRAP_KEY) !== undefined;
+/** true depois que a primeira varredura do campus inteiro já anunciou o backlog. */
+export function isCampusBacklogDone(): boolean {
+  return getMetaStmt.get(CAMPUS_BACKLOG_KEY) !== undefined;
 }
 
-export function markMuralBootstrapped(): void {
-  setMetaStmt.run(BOOTSTRAP_KEY, new Date().toISOString());
+export function markCampusBacklogDone(): void {
+  setMetaStmt.run(CAMPUS_BACKLOG_KEY, new Date().toISOString());
 }
