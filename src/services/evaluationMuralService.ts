@@ -9,6 +9,8 @@ import {
   isClosedProjectNotified,
   markClosedProjectNotified,
   pruneClosedProjects,
+  isMuralBootstrapped,
+  markMuralBootstrapped,
 } from "../db/database.js";
 import {
   getWaitingForCorrection,
@@ -21,6 +23,7 @@ import {
   ordinalLabel,
   closedProjectMessage,
   upcomingEvaluationMessage,
+  backlogMessages,
 } from "./muralMessages.js";
 
 const REQUEST_GAP_MS = 600; // respeita o rate limit de ~2 req/s da API da 42
@@ -35,6 +38,12 @@ export async function pollUpcomingEvaluations(): Promise<void> {
   const windowEnd = now + config.MURAL_WINDOW_HOURS * 60 * 60 * 1000;
 
   const messages: OutgoingMessage[] = [];
+
+  // Primeira varredura de todas: em vez de engolir os projetos já abertos,
+  // anuncia todos de uma vez num único bloco. Depois disso, só closes novos.
+  const bootstrapping = !isMuralBootstrapped();
+  const backlog: { login: string; project: string; total: number | null }[] = [];
+  let hadError = false;
 
   for (const login of logins) {
     try {
@@ -61,6 +70,8 @@ export async function pollUpcomingEvaluations(): Promise<void> {
               sortKey: now,
               text: closedProjectMessage({ login, project: pu.project.name, total }),
             });
+          } else if (bootstrapping) {
+            backlog.push({ login, project: pu.project.name, total });
           }
           markClosedProjectNotified(pu.current_team_id, login, pu.project.name);
         }
@@ -88,8 +99,18 @@ export async function pollUpcomingEvaluations(): Promise<void> {
       pruneClosedProjects(login, activeTeamIds);
       if (!seenLogin) markMuralLoginSeen(login);
     } catch (error) {
+      hadError = true;
       console.error(`Erro ao checar avaliações de ${login}:`, error);
     }
+  }
+
+  // Só marca o bootstrap como feito se a varredura passou limpa — senão os
+  // logins que falharam entram no backlog na próxima rodada.
+  if (bootstrapping && !hadError) {
+    for (const text of backlogMessages(backlog)) {
+      messages.push({ sortKey: -1, text });
+    }
+    markMuralBootstrapped();
   }
 
   if (messages.length === 0) return;
