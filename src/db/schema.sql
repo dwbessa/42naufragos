@@ -27,3 +27,9 @@ CREATE TABLE IF NOT EXISTS mural_closed_projects (
   project TEXT NOT NULL,
   notified_at TEXT NOT NULL
 );
+
+-- Flags simples do mural (ex: primeira varredura já concluída).
+CREATE TABLE IF NOT EXISTS mural_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

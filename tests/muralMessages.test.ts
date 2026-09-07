@@ -5,6 +5,7 @@ import {
   ordinalLabel,
   closedProjectMessage,
   upcomingEvaluationMessage,
+  backlogMessages,
 } from "../src/services/muralMessages.ts";
 
 const slot = (id: number, begin_at: string, filled_at: string | null = null) => ({
@@ -42,6 +43,32 @@ test("closedProjectMessage com e sem total", () => {
     closedProjectMessage({ login: "jdoe", project: "x", total: null }),
     "🚪 **jdoe** fechou **x** — avaliações abertas!"
   );
+});
+
+test("backlogMessages: vazio -> nenhuma mensagem", () => {
+  assert.deepEqual(backlogMessages([]), []);
+});
+
+test("backlogMessages: uma mensagem com header e bullets", () => {
+  const out = backlogMessages([
+    { login: "a", project: "philosophers", total: 2 },
+    { login: "b", project: "cub3d", total: null },
+  ]);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /Projetos abertos aguardando correção/);
+  assert.match(out[0], /• \*\*a\*\* — \*\*philosophers\*\* \(precisa de 2 correções\)/);
+  assert.match(out[0], /• \*\*b\*\* — \*\*cub3d\*\*$/m);
+});
+
+test("backlogMessages: quebra em várias quando passa do limite", () => {
+  const many = Array.from({ length: 200 }, (_, i) => ({
+    login: `user${i}`,
+    project: `projeto_bem_longo_numero_${i}`,
+    total: 3,
+  }));
+  const out = backlogMessages(many);
+  assert.ok(out.length > 1);
+  for (const chunk of out) assert.ok(chunk.length <= 1900);
 });
 
 test("upcomingEvaluationMessage inclui o ordinal", () => {

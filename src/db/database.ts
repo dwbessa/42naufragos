@@ -115,3 +115,18 @@ export function markClosedProjectNotified(teamId: number, login: string, project
 export function pruneClosedProjects(login: string, activeTeamIds: number[]): void {
   deleteStaleClosedStmt.run(login, JSON.stringify(activeTeamIds));
 }
+
+const BOOTSTRAP_KEY = "closed_projects_bootstrapped";
+const getMetaStmt = db.prepare("SELECT value FROM mural_meta WHERE key = ?");
+const setMetaStmt = db.prepare(
+  "INSERT INTO mural_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+);
+
+/** true depois que a primeira varredura completa já rodou (backlog inicial já anunciado). */
+export function isMuralBootstrapped(): boolean {
+  return getMetaStmt.get(BOOTSTRAP_KEY) !== undefined;
+}
+
+export function markMuralBootstrapped(): void {
+  setMetaStmt.run(BOOTSTRAP_KEY, new Date().toISOString());
+}
