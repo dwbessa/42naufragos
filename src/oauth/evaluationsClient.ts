@@ -34,27 +34,34 @@ export interface CampusWaitingEntry {
   login: string;
   projectId: number;
   projectName: string;
+  markedAt: string | null;
 }
 
 interface CampusProjectUser {
   current_team_id: number | null;
+  marked_at: string | null;
   project: { id: number; name: string };
   user?: { login: string } | null;
   login?: string;
 }
 
 /**
- * Todos os projetos do campus em waiting_for_correction (alguém fechou, dá pra
- * marcar correção). Uma consulta paginada em vez de varrer usuário por usuário.
+ * Todos os projetos do campus em waiting_for_correction. Uma consulta paginada
+ * em vez de varrer usuário por usuário.
+ *
+ * Retorna a lista bruta (com marked_at) — o serviço decide o que é "fechou
+ * agora" (recência) e o que ainda está aberto (pra saber quando apagar o
+ * anúncio). A lista bruta tem zumbis de anos atrás e placeholders de avaliação
+ * de estágio (marked_at null); o filtro de recência mora no serviço.
  */
 export async function getCampusWaitingForCorrection(campusId: number): Promise<CampusWaitingEntry[]> {
   const out: CampusWaitingEntry[] = [];
   const pageSize = 100;
-  const maxPages = 50; // guarda contra loop infinito (~5000 projetos)
+  const maxPages = 20;
 
   for (let page = 1; page <= maxPages; page++) {
     const batch = await fetchJson<CampusProjectUser[]>(
-      `/campus/${campusId}/projects_users?filter[status]=waiting_for_correction` +
+      `/projects_users?filter[status]=waiting_for_correction&filter[campus]=${campusId}` +
         `&page[size]=${pageSize}&page[number]=${page}`
     );
 
@@ -66,6 +73,7 @@ export async function getCampusWaitingForCorrection(campusId: number): Promise<C
         login,
         projectId: pu.project.id,
         projectName: pu.project.name,
+        markedAt: pu.marked_at,
       });
     }
 
@@ -100,40 +108,16 @@ export async function getTeamScaleTeams(teamId: number): Promise<ScaleTeamSlot[]
   return team.scale_teams;
 }
 
-interface Scale {
-  id: number;
-  correction_number: number;
-}
-
-const correctionNumberCache = new Map<number, number>();
-
 /**
- * Quantas avaliações o projeto exige (o "N" de "X/N"). Tenta primeiro pelo
- * scale aninhado nas escalas do time (sem custo extra); se não vier, busca
- * /projects/:id/scales e cacheia. Retorna null quando não dá pra determinar.
+ * Quantas avaliações o projeto exige (o "N" de "X/N"), lido do scale aninhado
+ * nas escalas do time quando a API manda. Não dá pra buscar em /projects/:id/scales
+ * — 403 com o token de aplicação. Retorna null quando não vem aninhado.
  */
-export async function getProjectCorrectionNumber(
-  projectId: number,
-  scaleTeams: ScaleTeamSlot[]
-): Promise<number | null> {
+export function getProjectCorrectionNumber(scaleTeams: ScaleTeamSlot[]): number | null {
   const fromNested = scaleTeams
     .map((st) => st.scale?.correction_number)
     .find((n): n is number => typeof n === "number" && n > 0);
-  if (fromNested) return fromNested;
-
-  const cached = correctionNumberCache.get(projectId);
-  if (cached) return cached;
-
-  try {
-    const scales = await fetchJson<Scale[]>(`/projects/${projectId}/scales`);
-    const numbers = scales.map((s) => s.correction_number).filter((n) => typeof n === "number" && n > 0);
-    if (numbers.length === 0) return null;
-    const n = Math.max(...numbers);
-    correctionNumberCache.set(projectId, n);
-    return n;
-  } catch {
-    return null;
-  }
+  return fromNested ?? null;
 }
 
 export function sleep(ms: number): Promise<void> {
