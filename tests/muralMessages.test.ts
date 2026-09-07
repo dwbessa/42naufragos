@@ -31,16 +31,16 @@ test("ordinalLabel mostra X/N quando cabe, senão só X", () => {
 
 test("closedProjectMessage com e sem total", () => {
   assert.equal(
-    closedProjectMessage({ login: "jdoe", project: "ft_transcendence", booked: 1, total: 3 }),
-    "🚪 **jdoe** fechou **ft_transcendence** — avaliações abertas! (1/3 marcada)"
+    closedProjectMessage({ login: "jdoe", project: "ft_transcendence", total: 3 }),
+    "🚪 **jdoe** fechou **ft_transcendence** — avaliações abertas! (precisa de 3 correções)"
   );
   assert.equal(
-    closedProjectMessage({ login: "jdoe", project: "philosophers", booked: 2, total: 2 }),
-    "🚪 **jdoe** fechou **philosophers** — avaliações abertas! (2/2 marcadas)"
+    closedProjectMessage({ login: "jdoe", project: "philosophers", total: 2 }),
+    "🚪 **jdoe** fechou **philosophers** — avaliações abertas! (precisa de 2 correções)"
   );
   assert.equal(
-    closedProjectMessage({ login: "jdoe", project: "x", booked: 0, total: null }),
-    "🚪 **jdoe** fechou **x** — avaliações abertas! (0 marcadas)"
+    closedProjectMessage({ login: "jdoe", project: "x", total: null }),
+    "🚪 **jdoe** fechou **x** — avaliações abertas!"
   );
 });
 

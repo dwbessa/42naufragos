@@ -24,16 +24,15 @@ export function ordinalLabel(index1: number, total: number | null): string {
   return `${index1}`;
 }
 
-/** "avaliações abertas! (1/3 marcadas)" — progresso de agendamento do projeto recém-fechado. */
+/** "avaliações abertas! (precisa de 3 correções)" — projeto recém-fechado, 0 avaliações marcadas ainda. */
 export function closedProjectMessage(params: {
   login: string;
   project: string;
-  booked: number;
   total: number | null;
 }): string {
-  const { login, project, booked, total } = params;
-  const progress = total ? `${booked}/${total} marcada${booked === 1 ? "" : "s"}` : `${booked} marcada${booked === 1 ? "" : "s"}`;
-  return `🚪 **${login}** fechou **${project}** — avaliações abertas! (${progress})`;
+  const { login, project, total } = params;
+  const need = total ? ` (precisa de ${total} ${total === 1 ? "correção" : "correções"})` : "";
+  return `🚪 **${login}** fechou **${project}** — avaliações abertas!${need}`;
 }
 
 /** "tem avaliação 2/3 de X marcada pra 07/09 14:00" */

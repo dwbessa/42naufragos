@@ -59,12 +59,7 @@ export async function pollUpcomingEvaluations(): Promise<void> {
           if (seenLogin) {
             messages.push({
               sortKey: now,
-              text: closedProjectMessage({
-                login,
-                project: pu.project.name,
-                booked: slots.length,
-                total,
-              }),
+              text: closedProjectMessage({ login, project: pu.project.name, total }),
             });
           }
           markClosedProjectNotified(pu.current_team_id, login, pu.project.name);
