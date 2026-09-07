@@ -35,35 +35,6 @@ export function closedProjectMessage(params: {
   return `🚪 **${login}** fechou **${project}** — avaliações abertas!${need}`;
 }
 
-/**
- * Anúncio único da primeira varredura: lista os projetos já abertos aguardando
- * correção. Quebra em várias mensagens se passar do limite do Discord.
- */
-export function backlogMessages(
-  entries: { login: string; project: string; total: number | null }[]
-): string[] {
-  if (entries.length === 0) return [];
-
-  const header = "📋 **Projetos abertos aguardando correção** — dá pra marcar avaliação:";
-  const lines = entries.map(({ login, project, total }) => {
-    const need = total ? ` (precisa de ${total} ${total === 1 ? "correção" : "correções"})` : "";
-    return `• **${login}** — **${project}**${need}`;
-  });
-
-  const chunks: string[] = [];
-  let current = header;
-  for (const line of lines) {
-    if (current.length + 1 + line.length > 1900) {
-      chunks.push(current);
-      current = line;
-    } else {
-      current += "\n" + line;
-    }
-  }
-  chunks.push(current);
-  return chunks;
-}
-
 /** "tem avaliação 2/3 de X marcada pra 07/09 14:00" (o "2/3" some quando não dá pra saber o total) */
 export function upcomingEvaluationMessage(params: {
   login: string;
