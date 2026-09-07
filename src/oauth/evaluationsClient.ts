@@ -33,16 +33,60 @@ export interface ScaleTeamSlot {
   id: number;
   begin_at: string;
   filled_at: string | null;
+  /** Presente quando a API devolve a escala aninhada; usamos o correction_number pra montar "X/N". */
+  scale?: { correction_number?: number } | null;
 }
 
-interface TeamDetail {
+export interface TeamDetail {
   id: number;
+  project_id: number;
   scale_teams: ScaleTeamSlot[];
 }
 
+export async function getTeamDetail(teamId: number): Promise<TeamDetail> {
+  return fetchJson<TeamDetail>(`/teams/${teamId}`);
+}
+
+/** Compat: só as escalas de um time. */
 export async function getTeamScaleTeams(teamId: number): Promise<ScaleTeamSlot[]> {
-  const team = await fetchJson<TeamDetail>(`/teams/${teamId}`);
+  const team = await getTeamDetail(teamId);
   return team.scale_teams;
+}
+
+interface Scale {
+  id: number;
+  correction_number: number;
+}
+
+const correctionNumberCache = new Map<number, number>();
+
+/**
+ * Quantas avaliações o projeto exige (o "N" de "X/N"). Tenta primeiro pelo
+ * scale aninhado nas escalas do time (sem custo extra); se não vier, busca
+ * /projects/:id/scales e cacheia. Retorna null quando não dá pra determinar.
+ */
+export async function getProjectCorrectionNumber(
+  projectId: number,
+  scaleTeams: ScaleTeamSlot[]
+): Promise<number | null> {
+  const fromNested = scaleTeams
+    .map((st) => st.scale?.correction_number)
+    .find((n): n is number => typeof n === "number" && n > 0);
+  if (fromNested) return fromNested;
+
+  const cached = correctionNumberCache.get(projectId);
+  if (cached) return cached;
+
+  try {
+    const scales = await fetchJson<Scale[]>(`/projects/${projectId}/scales`);
+    const numbers = scales.map((s) => s.correction_number).filter((n) => typeof n === "number" && n > 0);
+    if (numbers.length === 0) return null;
+    const n = Math.max(...numbers);
+    correctionNumberCache.set(projectId, n);
+    return n;
+  } catch {
+    return null;
+  }
 }
 
 export function sleep(ms: number): Promise<void> {

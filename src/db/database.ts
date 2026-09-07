@@ -81,3 +81,37 @@ export function isEvaluationPosted(scaleTeamId: number): boolean {
 export function markEvaluationPosted(scaleTeamId: number): void {
   markPostedStmt.run(scaleTeamId, new Date().toISOString());
 }
+
+const hasSeenLoginStmt = db.prepare("SELECT 1 FROM mural_seen_logins WHERE login = ?");
+const markLoginSeenStmt = db.prepare(
+  "INSERT OR IGNORE INTO mural_seen_logins (login, seen_at) VALUES (?, ?)"
+);
+
+export function hasSeenMuralLogin(login: string): boolean {
+  return hasSeenLoginStmt.get(login) !== undefined;
+}
+
+export function markMuralLoginSeen(login: string): void {
+  markLoginSeenStmt.run(login, new Date().toISOString());
+}
+
+const isClosedNotifiedStmt = db.prepare("SELECT 1 FROM mural_closed_projects WHERE team_id = ?");
+const markClosedNotifiedStmt = db.prepare(
+  "INSERT OR IGNORE INTO mural_closed_projects (team_id, login, project, notified_at) VALUES (?, ?, ?, ?)"
+);
+const deleteStaleClosedStmt = db.prepare(
+  "DELETE FROM mural_closed_projects WHERE login = ? AND team_id NOT IN (SELECT value FROM json_each(?))"
+);
+
+export function isClosedProjectNotified(teamId: number): boolean {
+  return isClosedNotifiedStmt.get(teamId) !== undefined;
+}
+
+export function markClosedProjectNotified(teamId: number, login: string, project: string): void {
+  markClosedNotifiedStmt.run(teamId, login, project, new Date().toISOString());
+}
+
+/** Remove os times anunciados desse login que não estão mais aguardando correção. */
+export function pruneClosedProjects(login: string, activeTeamIds: number[]): void {
+  deleteStaleClosedStmt.run(login, JSON.stringify(activeTeamIds));
+}
