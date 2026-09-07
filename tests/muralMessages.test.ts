@@ -81,3 +81,14 @@ test("upcomingEvaluationMessage inclui o ordinal", () => {
   assert.match(msg, /avaliação \*\*2\/3\*\* de \*\*minishell\*\*/);
   assert.match(msg, /07\/09/);
 });
+
+test("upcomingEvaluationMessage sem ordinal quando total desconhecido", () => {
+  const msg = upcomingEvaluationMessage({
+    login: "jdoe",
+    project: "minishell",
+    ordinal: null,
+    beginAt: "2026-09-07T17:00:00Z",
+  });
+  assert.match(msg, /tem avaliação de \*\*minishell\*\*/);
+  assert.doesNotMatch(msg, /avaliação \*\*/);
+});

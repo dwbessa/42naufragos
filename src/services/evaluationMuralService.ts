@@ -55,7 +55,10 @@ export async function pollUpcomingEvaluations(): Promise<void> {
 async function collectClosedProjects(messages: OutgoingMessage[]): Promise<void> {
   let entries;
   try {
-    entries = await getCampusWaitingForCorrection(config.FT_CAMPUS_ID);
+    entries = await getCampusWaitingForCorrection(
+      config.FT_CAMPUS_ID,
+      config.MURAL_CLOSED_MAX_AGE_DAYS
+    );
   } catch (error) {
     console.error("Erro ao buscar projetos fechados do campus:", error);
     return;
@@ -68,15 +71,12 @@ async function collectClosedProjects(messages: OutgoingMessage[]): Promise<void>
   for (const entry of entries) {
     if (isClosedProjectNotified(entry.teamId)) continue;
 
-    const total = await getProjectCorrectionNumber(entry.projectId, []);
-    await sleep(REQUEST_GAP_MS);
-
     if (bootstrapping) {
-      backlog.push({ login: entry.login, project: entry.projectName, total });
+      backlog.push({ login: entry.login, project: entry.projectName, total: null });
     } else {
       messages.push({
         sortKey: now,
-        text: closedProjectMessage({ login: entry.login, project: entry.projectName, total }),
+        text: closedProjectMessage({ login: entry.login, project: entry.projectName, total: null }),
       });
     }
     markClosedProjectNotified(entry.teamId, entry.login, entry.projectName);
@@ -107,7 +107,7 @@ async function collectUpcomingEvaluations(messages: OutgoingMessage[]): Promise<
         const team = await getTeamDetail(pu.current_team_id);
         await sleep(REQUEST_GAP_MS);
 
-        const total = await getProjectCorrectionNumber(pu.project.id, team.scale_teams);
+        const total = getProjectCorrectionNumber(team.scale_teams);
         const slots = sortSlots(team.scale_teams);
 
         slots.forEach((slot, i) => {
@@ -121,7 +121,7 @@ async function collectUpcomingEvaluations(messages: OutgoingMessage[]): Promise<
             text: upcomingEvaluationMessage({
               login,
               project: pu.project.name,
-              ordinal: ordinalLabel(i + 1, total),
+              ordinal: total ? ordinalLabel(i + 1, total) : null,
               beginAt: slot.begin_at,
             }),
           });

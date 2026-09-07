@@ -64,13 +64,14 @@ export function backlogMessages(
   return chunks;
 }
 
-/** "tem avaliação 2/3 de X marcada pra 07/09 14:00" */
+/** "tem avaliação 2/3 de X marcada pra 07/09 14:00" (o "2/3" some quando não dá pra saber o total) */
 export function upcomingEvaluationMessage(params: {
   login: string;
   project: string;
-  ordinal: string;
+  ordinal: string | null;
   beginAt: string;
 }): string {
   const { login, project, ordinal, beginAt } = params;
-  return `📋 **${login}** tem avaliação **${ordinal}** de **${project}** marcada pra **${formatBrasiliaTime(beginAt)}**`;
+  const label = ordinal ? `avaliação **${ordinal}**` : "avaliação";
+  return `📋 **${login}** tem ${label} de **${project}** marcada pra **${formatBrasiliaTime(beginAt)}**`;
 }
