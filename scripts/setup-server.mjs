@@ -9,6 +9,11 @@ const OWNER_USER_ID = "501196386226667531"; // dbessa
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// Remove emoji(s) + espaço do início pra comparar categorias já criadas com o nome novo (com emoji).
+function baseName(name) {
+  return name.replace(/^[^\p{L}]+\s*/u, "").trim();
+}
+
 function overwritesFor(
   guild,
   {
@@ -78,7 +83,7 @@ function overwritesFor(
 
 const structure = [
   {
-    name: "INÍCIO",
+    name: "👋 INÍCIO",
     noVoice: true,
     channels: [
       { name: "regras", publicRead: true, botOnlyWrite: true },
@@ -92,35 +97,48 @@ const structure = [
     ],
   },
   {
-    name: "GERAL",
+    name: "💬 GERAL",
     voiceLabel: "Geral",
-    channels: [{ name: "geral" }, { name: "off-topic" }, { name: "memes" }],
+    channels: [
+      { name: "geral" },
+      { name: "off-topic" },
+      { name: "memes" },
+      { name: "posts-geral", botOnlyWrite: true },
+    ],
   },
   {
-    name: "TRANSCENDERS",
+    name: "🚀 TRANSCENDERS",
     voiceLabel: "Transcenders",
     restrictedRoleId: TRANSCENDER_ROLE_ID,
-    channels: [{ name: "geral-transcenders", restrictedRoleId: TRANSCENDER_ROLE_ID }],
+    channels: [
+      { name: "geral-transcenders", restrictedRoleId: TRANSCENDER_ROLE_ID },
+      { name: "posts-transcenders", restrictedRoleId: TRANSCENDER_ROLE_ID, botOnlyWrite: true },
+    ],
   },
   {
-    name: "CURSUS",
+    name: "📚 CURSUS",
     voiceLabel: "Cursus",
-    channels: [{ name: "geral-cursus" }],
+    channels: [{ name: "geral-cursus" }, { name: "posts-cursus", botOnlyWrite: true }],
   },
   {
-    name: "PROJETOS",
+    name: "🛠️ PROJETOS",
     voiceLabel: "Projetos",
     channels: [
       { name: "buscando-dupla" },
       { name: "showcase" },
       { name: "mural-avaliacoes", botOnlyWrite: true, restrictedUserId: OWNER_USER_ID },
+      { name: "posts-projetos", botOnlyWrite: true },
     ],
   },
   {
-    name: "STAFF",
+    name: "🛡️ STAFF",
     voiceLabel: "Staff",
     staffOnly: true,
-    channels: [{ name: "staff-geral", staffOnly: true }, { name: "logs", staffOnly: true }],
+    channels: [
+      { name: "staff-geral", staffOnly: true },
+      { name: "logs", staffOnly: true },
+      { name: "posts-staff", staffOnly: true, botOnlyWrite: true },
+    ],
   },
 ];
 
@@ -145,7 +163,7 @@ client.once("ready", async () => {
 
   for (const cat of structure) {
     let category = existingChannels.find(
-      (c) => c.type === ChannelType.GuildCategory && c.name === cat.name
+      (c) => c.type === ChannelType.GuildCategory && baseName(c.name) === baseName(cat.name)
     );
 
     const categoryOverwrites = overwritesFor(guild, {
@@ -161,6 +179,10 @@ client.once("ready", async () => {
       });
       console.log(`Categoria criada: ${cat.name}`);
     } else {
+      if (category.name !== cat.name) {
+        await category.setName(cat.name);
+        console.log(`Categoria renomeada: ${category.name} -> ${cat.name}`);
+      }
       await category.permissionOverwrites.set(categoryOverwrites);
       console.log(`Categoria já existe, overwrites atualizados: ${cat.name}`);
     }
