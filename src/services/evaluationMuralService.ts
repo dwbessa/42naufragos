@@ -4,11 +4,13 @@ import {
   getAllVerifiedLogins,
   isEvaluationPosted,
   markEvaluationPosted,
+  getExpiredEvaluations,
+  deleteEvaluationRow,
+  pruneLegacyEvaluations,
   isClosedProjectNotified,
   markClosedProjectNotified,
-  pruneClosedProjects,
-  isCampusBacklogDone,
-  markCampusBacklogDone,
+  getStaleClosedProjects,
+  deleteClosedProjectRow,
 } from "../db/database.js";
 import {
   getWaitingForCorrection,
@@ -22,78 +24,87 @@ import {
   ordinalLabel,
   closedProjectMessage,
   upcomingEvaluationMessage,
-  backlogMessages,
 } from "./muralMessages.js";
 
 const REQUEST_GAP_MS = 600; // respeita o rate limit de ~2 req/s da API da 42
+const EVAL_MESSAGE_TTL_MS = 60 * 60 * 1000; // apaga o aviso 1h depois do begin_at
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-type OutgoingMessage = { sortKey: number; text: string };
+type OutgoingMessage = { sortKey: number; text: string; onSent: (messageId: string) => void };
 
 export async function pollUpcomingEvaluations(): Promise<void> {
   if (!config.DISCORD_MURAL_CHANNEL_ID) return;
 
-  const messages: OutgoingMessage[] = [];
+  const toSend: OutgoingMessage[] = [];
+  const toDelete = new Set<string>();
 
-  await collectClosedProjects(messages); // campus inteiro (42 Rio)
-  await collectUpcomingEvaluations(messages); // só verificados no Discord
+  await collectClosedProjects(toSend, toDelete);
+  await collectUpcomingEvaluations(toSend);
+  collectExpiredEvaluations(toDelete);
 
-  if (messages.length === 0) return;
+  if (toSend.length === 0 && toDelete.size === 0) return;
 
-  const channel = await client.channels.fetch(config.DISCORD_MURAL_CHANNEL_ID).catch(() => null);
+  const channel = await client.channels
+    .fetch(config.DISCORD_MURAL_CHANNEL_ID)
+    .catch(() => null);
   if (!channel || !channel.isTextBased() || !("send" in channel)) return;
 
-  messages.sort((a, b) => a.sortKey - b.sortKey);
-  for (const message of messages) {
-    await channel.send(message.text);
+  for (const messageId of toDelete) {
+    await channel.messages.delete(messageId).catch(() => {
+      /* mensagem já apagada / sem permissão — segue */
+    });
+  }
+
+  toSend.sort((a, b) => a.sortKey - b.sortKey);
+  for (const message of toSend) {
+    const sent = await channel.send(message.text);
+    message.onSent(sent.id);
   }
 }
 
 /**
- * Anuncia projetos recém-fechados de qualquer estudante do campus. Na primeira
- * varredura despeja o backlog inteiro (projetos já abertos); depois, só os novos.
+ * Projetos recém-fechados de qualquer estudante do campus -> avaliações abertas.
+ * Também apaga o anúncio quando o time sai de waiting_for_correction (correções
+ * feitas ou projeto abandonado).
  */
-async function collectClosedProjects(messages: OutgoingMessage[]): Promise<void> {
+async function collectClosedProjects(
+  toSend: OutgoingMessage[],
+  toDelete: Set<string>
+): Promise<void> {
   let entries;
   try {
-    entries = await getCampusWaitingForCorrection(
-      config.FT_CAMPUS_ID,
-      config.MURAL_CLOSED_MAX_AGE_DAYS
-    );
+    entries = await getCampusWaitingForCorrection(config.FT_CAMPUS_ID);
   } catch (error) {
     console.error("Erro ao buscar projetos fechados do campus:", error);
     return;
   }
 
   const now = Date.now();
-  const bootstrapping = !isCampusBacklogDone();
-  const backlog: { login: string; project: string; total: number | null }[] = [];
+  const freshCutoff = now - config.MURAL_CLOSED_MAX_AGE_DAYS * DAY_MS;
+  const activeTeamIds = entries.map((e) => e.teamId);
 
-  for (const entry of entries) {
-    if (isClosedProjectNotified(entry.teamId)) continue;
-
-    if (bootstrapping) {
-      backlog.push({ login: entry.login, project: entry.projectName, total: null });
-    } else {
-      messages.push({
-        sortKey: now,
-        text: closedProjectMessage({ login: entry.login, project: entry.projectName, total: null }),
-      });
-    }
-    markClosedProjectNotified(entry.teamId, entry.login, entry.projectName);
+  // Apaga anúncios de times que não estão mais aguardando correção.
+  for (const stale of getStaleClosedProjects(activeTeamIds)) {
+    if (stale.messageId) toDelete.add(stale.messageId);
+    deleteClosedProjectRow(stale.teamId);
   }
 
-  pruneClosedProjects(entries.map((e) => e.teamId));
+  // Anuncia os que fecharam dentro da janela de recência e ainda não foram anunciados.
+  for (const entry of entries) {
+    if (!entry.markedAt || Date.parse(entry.markedAt) < freshCutoff) continue;
+    if (isClosedProjectNotified(entry.teamId)) continue;
 
-  if (bootstrapping) {
-    for (const text of backlogMessages(backlog)) {
-      messages.push({ sortKey: -1, text });
-    }
-    markCampusBacklogDone();
+    toSend.push({
+      sortKey: now,
+      text: closedProjectMessage({ login: entry.login, project: entry.projectName, total: null }),
+      onSent: (messageId) =>
+        markClosedProjectNotified(entry.teamId, entry.login, entry.projectName, messageId),
+    });
   }
 }
 
 /** Lembretes de avaliação agendada dentro da janela — só pra quem se verificou no Discord. */
-async function collectUpcomingEvaluations(messages: OutgoingMessage[]): Promise<void> {
+async function collectUpcomingEvaluations(toSend: OutgoingMessage[]): Promise<void> {
   const logins = getAllVerifiedLogins();
   const now = Date.now();
   const windowEnd = now + config.MURAL_WINDOW_HOURS * 60 * 60 * 1000;
@@ -116,7 +127,7 @@ async function collectUpcomingEvaluations(messages: OutgoingMessage[]): Promise<
           if (beginAtMs < now || beginAtMs > windowEnd) return;
           if (isEvaluationPosted(slot.id)) return;
 
-          messages.push({
+          toSend.push({
             sortKey: beginAtMs,
             text: upcomingEvaluationMessage({
               login,
@@ -124,12 +135,23 @@ async function collectUpcomingEvaluations(messages: OutgoingMessage[]): Promise<
               ordinal: total ? ordinalLabel(i + 1, total) : null,
               beginAt: slot.begin_at,
             }),
+            onSent: (messageId) => markEvaluationPosted(slot.id, messageId, slot.begin_at),
           });
-          markEvaluationPosted(slot.id);
         });
       }
     } catch (error) {
       console.error(`Erro ao checar avaliações de ${login}:`, error);
     }
   }
+}
+
+/** Avaliações cujo horário já passou de 1h -> apaga o aviso. */
+function collectExpiredEvaluations(toDelete: Set<string>): void {
+  const cutoff = new Date(Date.now() - EVAL_MESSAGE_TTL_MS).toISOString();
+  for (const expired of getExpiredEvaluations(cutoff)) {
+    if (expired.messageId) toDelete.add(expired.messageId);
+    deleteEvaluationRow(expired.scaleTeamId);
+  }
+  // Linhas legado (sem begin_at, sem message_id) some depois de 2 dias.
+  pruneLegacyEvaluations(new Date(Date.now() - 2 * DAY_MS).toISOString());
 }

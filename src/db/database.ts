@@ -12,6 +12,17 @@ db.exec("PRAGMA journal_mode = WAL;");
 const schemaPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
 db.exec(readFileSync(schemaPath, "utf8"));
 
+// Migrações leves: adiciona colunas novas em tabelas que já existem no volume.
+function ensureColumn(table: string, column: string, definition: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn("posted_evaluations", "message_id", "TEXT");
+ensureColumn("posted_evaluations", "begin_at", "TEXT");
+ensureColumn("mural_closed_projects", "message_id", "TEXT");
+
 export interface VerificationRecord {
   discord_id: string;
   intra_id: number;
@@ -71,49 +82,74 @@ export function getAllVerifiedLogins(): string[] {
 
 const isPostedStmt = db.prepare("SELECT 1 FROM posted_evaluations WHERE scale_team_id = ?");
 const markPostedStmt = db.prepare(
-  "INSERT OR IGNORE INTO posted_evaluations (scale_team_id, posted_at) VALUES (?, ?)"
+  "INSERT OR IGNORE INTO posted_evaluations (scale_team_id, message_id, begin_at, posted_at) VALUES (?, ?, ?, ?)"
+);
+const expiredEvalsStmt = db.prepare(
+  "SELECT scale_team_id AS scaleTeamId, message_id AS messageId FROM posted_evaluations WHERE begin_at IS NOT NULL AND begin_at < ?"
+);
+const deleteEvalStmt = db.prepare("DELETE FROM posted_evaluations WHERE scale_team_id = ?");
+const pruneOldNullEvalsStmt = db.prepare(
+  "DELETE FROM posted_evaluations WHERE begin_at IS NULL AND posted_at < ?"
 );
 
 export function isEvaluationPosted(scaleTeamId: number): boolean {
   return isPostedStmt.get(scaleTeamId) !== undefined;
 }
 
-export function markEvaluationPosted(scaleTeamId: number): void {
-  markPostedStmt.run(scaleTeamId, new Date().toISOString());
+export function markEvaluationPosted(
+  scaleTeamId: number,
+  messageId: string,
+  beginAt: string
+): void {
+  markPostedStmt.run(scaleTeamId, messageId, beginAt, new Date().toISOString());
+}
+
+/** Avaliações cujo begin_at já passou do limite — mensagem deve ser apagada. */
+export function getExpiredEvaluations(cutoffIso: string): { scaleTeamId: number; messageId: string | null }[] {
+  return expiredEvalsStmt.all(cutoffIso) as { scaleTeamId: number; messageId: string | null }[];
+}
+
+export function deleteEvaluationRow(scaleTeamId: number): void {
+  deleteEvalStmt.run(scaleTeamId);
+}
+
+/** Limpa linhas antigas sem begin_at (legado, sem message_id pra apagar). */
+export function pruneLegacyEvaluations(cutoffIso: string): void {
+  pruneOldNullEvalsStmt.run(cutoffIso);
 }
 
 const isClosedNotifiedStmt = db.prepare("SELECT 1 FROM mural_closed_projects WHERE team_id = ?");
 const markClosedNotifiedStmt = db.prepare(
-  "INSERT OR IGNORE INTO mural_closed_projects (team_id, login, project, notified_at) VALUES (?, ?, ?, ?)"
+  "INSERT OR IGNORE INTO mural_closed_projects (team_id, login, project, message_id, notified_at) VALUES (?, ?, ?, ?, ?)"
 );
-const deleteStaleClosedStmt = db.prepare(
-  "DELETE FROM mural_closed_projects WHERE team_id NOT IN (SELECT value FROM json_each(?))"
+const staleClosedStmt = db.prepare(
+  "SELECT team_id AS teamId, message_id AS messageId FROM mural_closed_projects WHERE team_id NOT IN (SELECT value FROM json_each(?))"
 );
+const deleteClosedRowStmt = db.prepare("DELETE FROM mural_closed_projects WHERE team_id = ?");
 
 export function isClosedProjectNotified(teamId: number): boolean {
   return isClosedNotifiedStmt.get(teamId) !== undefined;
 }
 
-export function markClosedProjectNotified(teamId: number, login: string, project: string): void {
-  markClosedNotifiedStmt.run(teamId, login, project, new Date().toISOString());
+export function markClosedProjectNotified(
+  teamId: number,
+  login: string,
+  project: string,
+  messageId: string
+): void {
+  markClosedNotifiedStmt.run(teamId, login, project, messageId, new Date().toISOString());
 }
 
-/** Remove os times anunciados que não estão mais aguardando correção no campus. */
-export function pruneClosedProjects(activeTeamIds: number[]): void {
-  deleteStaleClosedStmt.run(JSON.stringify(activeTeamIds));
+/** Times anunciados que não estão mais aguardando correção no campus. */
+export function getStaleClosedProjects(
+  activeTeamIds: number[]
+): { teamId: number; messageId: string | null }[] {
+  return staleClosedStmt.all(JSON.stringify(activeTeamIds)) as {
+    teamId: number;
+    messageId: string | null;
+  }[];
 }
 
-const CAMPUS_BACKLOG_KEY = "campus_closed_projects_bootstrapped";
-const getMetaStmt = db.prepare("SELECT value FROM mural_meta WHERE key = ?");
-const setMetaStmt = db.prepare(
-  "INSERT INTO mural_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-);
-
-/** true depois que a primeira varredura do campus inteiro já anunciou o backlog. */
-export function isCampusBacklogDone(): boolean {
-  return getMetaStmt.get(CAMPUS_BACKLOG_KEY) !== undefined;
-}
-
-export function markCampusBacklogDone(): void {
-  setMetaStmt.run(CAMPUS_BACKLOG_KEY, new Date().toISOString());
+export function deleteClosedProjectRow(teamId: number): void {
+  deleteClosedRowStmt.run(teamId);
 }

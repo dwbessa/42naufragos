@@ -34,6 +34,7 @@ export interface CampusWaitingEntry {
   login: string;
   projectId: number;
   projectName: string;
+  markedAt: string | null;
 }
 
 interface CampusProjectUser {
@@ -45,41 +46,34 @@ interface CampusProjectUser {
 }
 
 /**
- * Projetos do campus que entraram em waiting_for_correction recentemente
- * (alguém fechou, dá pra marcar correção). Uma consulta paginada em vez de
- * varrer usuário por usuário.
+ * Todos os projetos do campus em waiting_for_correction. Uma consulta paginada
+ * em vez de varrer usuário por usuário.
  *
- * `sinceDays` corta os zumbis: a lista bruta de waiting_for_correction tem
- * registros de anos atrás e placeholders de avaliação de estágio (marked_at
- * null). Filtramos por range[marked_at] no servidor + checagem no cliente.
+ * Retorna a lista bruta (com marked_at) — o serviço decide o que é "fechou
+ * agora" (recência) e o que ainda está aberto (pra saber quando apagar o
+ * anúncio). A lista bruta tem zumbis de anos atrás e placeholders de avaliação
+ * de estágio (marked_at null); o filtro de recência mora no serviço.
  */
-export async function getCampusWaitingForCorrection(
-  campusId: number,
-  sinceDays: number
-): Promise<CampusWaitingEntry[]> {
+export async function getCampusWaitingForCorrection(campusId: number): Promise<CampusWaitingEntry[]> {
   const out: CampusWaitingEntry[] = [];
   const pageSize = 100;
   const maxPages = 20;
-  const cutoffMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
-  const since = new Date(cutoffMs).toISOString();
-  const until = new Date().toISOString();
 
   for (let page = 1; page <= maxPages; page++) {
     const batch = await fetchJson<CampusProjectUser[]>(
       `/projects_users?filter[status]=waiting_for_correction&filter[campus]=${campusId}` +
-        `&range[marked_at]=${encodeURIComponent(`${since},${until}`)}` +
         `&page[size]=${pageSize}&page[number]=${page}`
     );
 
     for (const pu of batch) {
       const login = pu.user?.login ?? pu.login;
-      if (!login || !pu.current_team_id || !pu.marked_at) continue;
-      if (Date.parse(pu.marked_at) < cutoffMs) continue;
+      if (!login || !pu.current_team_id) continue;
       out.push({
         teamId: pu.current_team_id,
         login,
         projectId: pu.project.id,
         projectName: pu.project.name,
+        markedAt: pu.marked_at,
       });
     }
 
