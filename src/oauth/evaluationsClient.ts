@@ -2,11 +2,13 @@ import { getAppAccessToken } from "./appToken.js";
 import { FortyTwoApiError } from "./fortyTwoClient.js";
 
 const API_BASE = "https://api.intra.42.fr/v2";
+const REQUEST_TIMEOUT_MS = 10_000;
 
 async function fetchJson<T>(path: string): Promise<T> {
   const token = await getAppAccessToken();
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
