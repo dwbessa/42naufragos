@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { FortyTwoApiError } from "./fortyTwoClient.js";
 
 const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
+const REQUEST_TIMEOUT_MS = 10_000;
 
 let cached: { token: string; expiresAt: number } | null = null;
 
@@ -20,6 +21,7 @@ export async function getAppAccessToken(): Promise<string> {
       client_secret: config.FT_CLIENT_SECRET,
       scope: "public projects",
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
