@@ -91,7 +91,7 @@ async function collectClosedProjects(
 
   // Anuncia os que fecharam dentro da janela de recência e ainda não foram anunciados.
   for (const entry of entries) {
-    if (!entry.markedAt || Date.parse(entry.markedAt) < freshCutoff) continue;
+    if (!entry.closedAt || Date.parse(entry.closedAt) < freshCutoff) continue;
     if (isClosedProjectNotified(entry.teamId)) continue;
 
     toSend.push({

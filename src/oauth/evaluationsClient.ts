@@ -36,25 +36,33 @@ export interface CampusWaitingEntry {
   login: string;
   projectId: number;
   projectName: string;
-  markedAt: string | null;
+  /** Quando o time atual fechou o projeto (teams[].closed_at). */
+  closedAt: string | null;
 }
 
 interface CampusProjectUser {
   current_team_id: number | null;
-  marked_at: string | null;
-  project: { id: number; name: string };
+  project: { id: number; name: string; slug: string };
   user?: { login: string } | null;
   login?: string;
+  teams?: { id: number; closed_at: string | null }[];
 }
+
+/**
+ * Avaliações de estágio (empresa) também ficam em waiting_for_correction, mas
+ * não abrem slot de correção entre pares — não entram no mural.
+ */
+const NON_PEER_PROJECT_SLUG = /^(work-experience|internship)/;
 
 /**
  * Todos os projetos do campus em waiting_for_correction. Uma consulta paginada
  * em vez de varrer usuário por usuário.
  *
- * Retorna a lista bruta (com marked_at) — o serviço decide o que é "fechou
+ * Retorna a lista bruta (com closedAt) — o serviço decide o que é "fechou
  * agora" (recência) e o que ainda está aberto (pra saber quando apagar o
- * anúncio). A lista bruta tem zumbis de anos atrás e placeholders de avaliação
- * de estágio (marked_at null); o filtro de recência mora no serviço.
+ * anúncio). A lista bruta tem zumbis de anos atrás; o filtro de recência mora
+ * no serviço. Recência vem do closed_at do time atual: marked_at é a hora da
+ * nota, então é null em projeto recém-fechado.
  */
 export async function getCampusWaitingForCorrection(campusId: number): Promise<CampusWaitingEntry[]> {
   const out: CampusWaitingEntry[] = [];
@@ -70,12 +78,14 @@ export async function getCampusWaitingForCorrection(campusId: number): Promise<C
     for (const pu of batch) {
       const login = pu.user?.login ?? pu.login;
       if (!login || !pu.current_team_id) continue;
+      if (NON_PEER_PROJECT_SLUG.test(pu.project.slug)) continue;
+      const currentTeam = pu.teams?.find((team) => team.id === pu.current_team_id);
       out.push({
         teamId: pu.current_team_id,
         login,
         projectId: pu.project.id,
         projectName: pu.project.name,
-        markedAt: pu.marked_at,
+        closedAt: currentTeam?.closed_at ?? null,
       });
     }
 
