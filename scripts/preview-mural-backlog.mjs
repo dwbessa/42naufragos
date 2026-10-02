@@ -7,7 +7,7 @@ import { closedProjectMessage } from "../src/services/muralMessages.ts";
 
 const all = await getCampusWaitingForCorrection(config.FT_CAMPUS_ID);
 const cutoff = Date.now() - config.MURAL_CLOSED_MAX_AGE_DAYS * 86400000;
-const fresh = all.filter((e) => e.markedAt && Date.parse(e.markedAt) >= cutoff);
+const fresh = all.filter((e) => e.closedAt && Date.parse(e.closedAt) >= cutoff);
 
 console.error(
   `\n${all.length} projetos em waiting_for_correction no campus ${config.FT_CAMPUS_ID}` +
